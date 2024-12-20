@@ -9,6 +9,14 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Инициализация session state
+if 'phone' not in st.session_state:
+    st.session_state.phone = ''
+if 'code' not in st.session_state:
+    st.session_state.code = ''
+if 'auth_step' not in st.session_state:
+    st.session_state.auth_step = 'phone'  # возможные значения: 'phone', 'code', 'completed'
+
 async def download_photos(api_id, api_hash, chat_username):
     logger.info(f"[{datetime.now()}] Начинаем процесс скачивания")
     
@@ -22,31 +30,44 @@ async def download_photos(api_id, api_hash, chat_username):
         st.write("Подключение установлено...")
 
         if not await client.is_user_authorized():
-            # Добавляем форму для ввода телефона
-            phone = st.text_input("Введите номер телефона (в международном формате, например: +79123456789)")
-            if phone:
-                try:
-                    # Отправляем код подтверждения
-                    await client.send_code_request(phone)
-                    # Показываем поле для ввода кода
-                    code = st.text_input("Введите код подтверждения, отправленный в Telegram")
-                    if code:
-                        try:
-                            # Пытаемся войти с полученным кодом
-                            await client.sign_in(phone, code)
-                            st.success("Успешная авторизация!")
-                        except Exception as e:
-                            st.error(f"Ошибка при вводе кода: {str(e)}")
-                            return
-                except Exception as e:
-                    st.error(f"Ошибка при отправке кода: {str(e)}")
-                    return
-            return  # Прерываем выполнение до завершения авторизации
+            if st.session_state.auth_step == 'phone':
+                phone_col, button_col = st.columns([3, 1])
+                phone = phone_col.text_input(
+                    "Введите номер телефона (в международном формате, например: +79123456789)",
+                    key="phone_input",
+                    value=st.session_state.phone
+                )
+                if button_col.button("Отправить код"):
+                    st.session_state.phone = phone
+                    try:
+                        await client.send_code_request(phone)
+                        st.session_state.auth_step = 'code'
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка при отправке кода: {str(e)}")
+                return
 
+            elif st.session_state.auth_step == 'code':
+                code_col, button_col = st.columns([3, 1])
+                code = code_col.text_input(
+                    f"Введите код подтверждения, отправленный на номер {st.session_state.phone}",
+                    key="code_input"
+                )
+                if button_col.button("Подтвердить"):
+                    try:
+                        await client.sign_in(st.session_state.phone, code)
+                        st.session_state.auth_step = 'completed'
+                        st.success("Успешная авторизация!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка при вводе кода: {str(e)}")
+                return
+
+        # Если дошли до этой точки - значит авторизованы
         logger.info(f"[{datetime.now()}] Успешная авторизация")
         st.write("Успешная авторизация...")
 
-        # Остальной код для скачивания фотографий...
+        # Остальной код скачивания...
         try:
             chat = await client.get_entity(chat_username)
             messages = await client.get_messages(
