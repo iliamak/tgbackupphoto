@@ -3,26 +3,46 @@ from telethon import TelegramClient
 from telethon.tl.types import InputMessagesFilterPhotos
 import os
 import asyncio
-from contextlib import asynccontextmanager
+import logging
+from datetime import datetime
 
-# Функция для безопасного создания и закрытия клиента
-@asynccontextmanager
-async def create_client(api_id, api_hash):
-    client = TelegramClient('anon', api_id, api_hash)
-    try:
-        await client.start()
-        yield client
-    finally:
-        await client.disconnect()
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Основная функция скачивания
 async def download_photos(api_id, api_hash, chat_username):
-    async with create_client(api_id, api_hash) as client:
+    logger.info(f"[{datetime.now()}] Начинаем процесс скачивания")
+    logger.info(f"[{datetime.now()}] Создаем клиент Telegram")
+    
+    try:
+        # Создаем клиент
+        client = TelegramClient('anon', api_id, api_hash)
+        logger.info(f"[{datetime.now()}] Клиент создан, пытаемся подключиться")
+        st.write("Создан клиент Telegram...")
+
+        # Подключаемся
+        await client.connect()
+        logger.info(f"[{datetime.now()}] Подключение установлено")
+        st.write("Подключение установлено...")
+
+        # Проверяем авторизацию
+        if not await client.is_user_authorized():
+            logger.info(f"[{datetime.now()}] Требуется авторизация")
+            st.warning("Требуется авторизация...")
+            await client.start()
+            
+        logger.info(f"[{datetime.now()}] Успешная авторизация")
+        st.write("Успешная авторизация...")
+
         try:
             # Получаем информацию о чате
+            logger.info(f"[{datetime.now()}] Пытаемся получить информацию о чате: {chat_username}")
             chat = await client.get_entity(chat_username)
+            logger.info(f"[{datetime.now()}] Информация о чате получена")
+            st.write("Получен доступ к чату...")
             
-            # Получаем сообщения с фотографиями
+            # Получаем сообщения
+            logger.info(f"[{datetime.now()}] Запрашиваем список фотографий")
             messages = await client.get_messages(
                 chat,
                 filter=InputMessagesFilterPhotos,
@@ -30,35 +50,44 @@ async def download_photos(api_id, api_hash, chat_username):
             )
             
             if not messages:
+                logger.warning(f"[{datetime.now()}] Фотографии не найдены")
                 st.warning("В этом чате нет фотографий")
                 return
-            
+                
+            logger.info(f"[{datetime.now()}] Найдено {len(messages)} фотографий")
             st.success(f"Найдено фотографий: {len(messages)}")
             
-            # Создаем директорию для сохранения
+            # Создаем директорию
             chat_name = chat.title if hasattr(chat, 'title') else chat.username
             os.makedirs(f'photos_from_{chat_name}', exist_ok=True)
             
-            # Создаем прогресс бар
-            progress_bar = st.progress(0)
-            
             # Скачиваем фотографии
+            progress_bar = st.progress(0)
             for i, message in enumerate(messages):
-                try:
-                    progress = (i + 1) / len(messages)
-                    progress_bar.progress(progress)
-                    
-                    path = await message.download_media(f'./photos_from_{chat_name}/')
-                    if path:
-                        st.write(f"Скачано: {os.path.basename(path)}")
-                except Exception as e:
-                    st.warning(f"Не удалось скачать фото {i+1}: {str(e)}")
-                    continue
+                logger.info(f"[{datetime.now()}] Скачивание фото {i+1}/{len(messages)}")
+                progress = (i + 1) / len(messages)
+                progress_bar.progress(progress)
+                
+                path = await message.download_media(f'./photos_from_{chat_name}/')
+                if path:
+                    logger.info(f"[{datetime.now()}] Сохранено: {path}")
+                    st.write(f"Скачано: {os.path.basename(path)}")
             
-            st.success("Процесс завершен!")
+            logger.info(f"[{datetime.now()}] Процесс завершен успешно")
+            st.success("Все фотографии скачаны!")
             
         except Exception as e:
-            st.error(f"Ошибка: {str(e)}")
+            logger.error(f"[{datetime.now()}] Ошибка при работе с чатом: {str(e)}")
+            st.error(f"Ошибка при работе с чатом: {str(e)}")
+            
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] Ошибка при подключении: {str(e)}")
+        st.error(f"Ошибка при подключении к Telegram: {str(e)}")
+        
+    finally:
+        logger.info(f"[{datetime.now()}] Закрываем соединение")
+        await client.disconnect()
+        logger.info(f"[{datetime.now()}] Соединение закрыто")
 
 # Интерфейс приложения
 st.title("📸 Telegram Photos Downloader")
@@ -69,13 +98,18 @@ api_hash = st.text_input("API Hash", type="password")
 chat_username = st.text_input("Username чата или номер телефона")
 
 if st.button("Скачать фотографии"):
+    logger.info(f"[{datetime.now()}] Нажата кнопка скачивания")
+    
     if not api_id or not api_hash or not chat_username:
+        logger.warning(f"[{datetime.now()}] Не все поля заполнены")
         st.error("Пожалуйста, заполните все поля")
     else:
+        logger.info(f"[{datetime.now()}] Начинаем процесс скачивания")
+        st.info("Подключаемся к Telegram...")
         try:
-            st.info("Подключаемся к Telegram...")
             asyncio.run(download_photos(api_id, api_hash, chat_username))
         except Exception as e:
+            logger.error(f"[{datetime.now()}] Критическая ошибка: {str(e)}")
             st.error(f"Критическая ошибка: {str(e)}")
 
 st.markdown("---")
