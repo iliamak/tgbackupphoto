@@ -77,7 +77,7 @@ async def download_photos(api_id, api_hash, chat_username):
        if st.session_state.auth_step == 'phone':
            st.info("Для начала нужно авторизоваться в Telegram")
            
-           # Используем форму для ввода телефона
+           # Форма для ввода телефона
            with st.form(key='phone_form'):
                phone = st.text_input(
                    "Введите номер телефона (в международном формате, например: +79123456789)",
@@ -104,7 +104,7 @@ async def download_photos(api_id, api_hash, chat_username):
        elif st.session_state.auth_step == 'code':
            st.info(f"Код отправлен на номер {st.session_state.phone}")
            
-           # Используем форму для ввода кода
+           # Форма для ввода кода
            with st.form(key='code_form'):
                code = st.text_input("Введите код из Telegram", key="code_input")
                submit_code = st.form_submit_button("Подтвердить код")
@@ -125,7 +125,7 @@ async def download_photos(api_id, api_hash, chat_username):
                        logger.error(f"[{datetime.now()}] Ошибка при вводе кода: {str(e)}")
                        st.error(f"Ошибка при вводе кода: {str(e)}")
            
-           # Кнопка для повторной отправки кода
+           # Кнопка повторной отправки кода вне формы
            if st.button("Отправить код повторно", key="resend_code_btn"):
                if await send_code(api_id, api_hash, st.session_state.phone):
                    st.success("Код отправлен повторно")
@@ -189,22 +189,20 @@ async def download_photos(api_id, api_hash, chat_username):
 st.title("📸 Telegram Photos Downloader")
 st.write("Скачивайте фотографии из чатов Telegram")
 
-# Основная форма
-with st.form(key='main_form'):
-   api_id = st.text_input("API ID", type="password")
-   api_hash = st.text_input("API Hash", type="password")
-   chat_username = st.text_input(
-       "Username чата или номер телефона",
-       value="me" if st.session_state.auth_step != 'phone' else "",
-       help="Используйте 'me' для сохранения фото из избранного"
-   )
-   submit_main = st.form_submit_button("Скачать фотографии")
+# Основные поля ввода (без формы)
+api_id = st.text_input("API ID", type="password")
+api_hash = st.text_input("API Hash", type="password")
+chat_username = st.text_input(
+   "Username чата или номер телефона",
+   value="me" if st.session_state.auth_step != 'phone' else "",
+   help="Используйте 'me' для сохранения фото из избранного"
+)
 
-   if submit_main:
-       if not api_id or not api_hash or not chat_username:
-           st.error("Пожалуйста, заполните все поля")
-       else:
-           asyncio.run(download_photos(api_id, api_hash, chat_username))
+if st.button("Скачать фотографии", key="main_button"):
+   if not api_id or not api_hash or not chat_username:
+       st.error("Пожалуйста, заполните все поля")
+   else:
+       asyncio.run(download_photos(api_id, api_hash, chat_username))
 
 # Отладочная информация в сайдбаре
 with st.sidebar:
