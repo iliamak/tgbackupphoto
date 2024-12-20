@@ -3,92 +3,83 @@ from telethon import TelegramClient
 from telethon.tl.types import InputMessagesFilterPhotos
 import os
 import asyncio
-from config import *
-from utils import create_download_directory, initialize_client, format_file_size
+from contextlib import asynccontextmanager
 
-# Настройка страницы
-st.set_page_config(
-    page_title=APP_NAME,
-    page_icon=APP_ICON,
-    layout="centered"
-)
+# Функция для безопасного создания и закрытия клиента
+@asynccontextmanager
+async def create_client(api_id, api_hash):
+    client = TelegramClient('anon', api_id, api_hash)
+    try:
+        await client.start()
+        yield client
+    finally:
+        await client.disconnect()
 
-# Стилизация заголовка
-st.title(f"{APP_ICON} {APP_NAME}")
+# Основная функция скачивания
+async def download_photos(api_id, api_hash, chat_username):
+    async with create_client(api_id, api_hash) as client:
+        try:
+            # Получаем информацию о чате
+            chat = await client.get_entity(chat_username)
+            
+            # Получаем сообщения с фотографиями
+            messages = await client.get_messages(
+                chat,
+                filter=InputMessagesFilterPhotos,
+                limit=None
+            )
+            
+            if not messages:
+                st.warning("В этом чате нет фотографий")
+                return
+            
+            st.success(f"Найдено фотографий: {len(messages)}")
+            
+            # Создаем директорию для сохранения
+            chat_name = chat.title if hasattr(chat, 'title') else chat.username
+            os.makedirs(f'photos_from_{chat_name}', exist_ok=True)
+            
+            # Создаем прогресс бар
+            progress_bar = st.progress(0)
+            
+            # Скачиваем фотографии
+            for i, message in enumerate(messages):
+                try:
+                    progress = (i + 1) / len(messages)
+                    progress_bar.progress(progress)
+                    
+                    path = await message.download_media(f'./photos_from_{chat_name}/')
+                    if path:
+                        st.write(f"Скачано: {os.path.basename(path)}")
+                except Exception as e:
+                    st.warning(f"Не удалось скачать фото {i+1}: {str(e)}")
+                    continue
+            
+            st.success("Процесс завершен!")
+            
+        except Exception as e:
+            st.error(f"Ошибка: {str(e)}")
+
+# Интерфейс приложения
+st.title("📸 Telegram Photos Downloader")
 st.write("Скачивайте фотографии из чатов Telegram")
 
-# Основная форма
-api_id = st.text_input("API ID", type="password", help="Введите API ID от Telegram")
-api_hash = st.text_input("API Hash", type="password", help="Введите API Hash от Telegram")
-chat_username = st.text_input(
-    "Username чата или номер телефона",
-    help="Введите username чата без @ или номер телефона"
-)
+api_id = st.text_input("API ID", type="password")
+api_hash = st.text_input("API Hash", type="password")
+chat_username = st.text_input("Username чата или номер телефона")
 
 if st.button("Скачать фотографии"):
     if not api_id or not api_hash or not chat_username:
         st.error("Пожалуйста, заполните все поля")
     else:
-        async def download_photos():
-            try:
-                # Создаем клиента
-                client = TelegramClient('anon', api_id, api_hash)
-                await client.start()
-                
-                # Получаем информацию о чате
-                chat = await client.get_entity(chat_username)
-                
-                # Получаем сообщения с фотографиями
-                messages = await client.get_messages(
-                    chat,
-                    filter=InputMessagesFilterPhotos,
-                    limit=None
-                )
-                
-                if not messages:
-                    st.warning("В этом чате нет фотографий")
-                    return
-                
-                st.success(f"Найдено фотографий: {len(messages)}")
-                
-                # Создаем директорию для сохранения
-                chat_name = chat.title if hasattr(chat, 'title') else chat.username
-                download_dir = create_download_directory(chat_name)
-                
-                # Создаем прогресс бар
-                progress_bar = st.progress(0)
-                
-                # Скачиваем фотографии
-                for i, message in enumerate(messages):
-                    # Обновляем прогресс
-                    progress = (i + 1) / len(messages)
-                    progress_bar.progress(progress)
-                    
-                    # Скачиваем фото
-                    path = await message.download_media(f'./{download_dir}/')
-                    if path:
-                        st.write(f"Скачано: {os.path.basename(path)}")
-                
-                st.success("Все фотографии успешно скачаны!")
-                
-            except Exception as e:
-                st.error(f"Ошибка: {str(e)}")
-            finally:
-                await client.disconnect()
+        try:
+            st.info("Подключаемся к Telegram...")
+            asyncio.run(download_photos(api_id, api_hash, chat_username))
+        except Exception as e:
+            st.error(f"Критическая ошибка: {str(e)}")
 
-        # Запускаем асинхронную функцию
-        st.info("Подключаемся к Telegram...")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(download_photos())
-
-# Добавляем футер
 st.markdown("---")
 st.markdown(
-    """
-    <div style='text-align: center'>
-        Сделано с ❤️ для удобного скачивания фото из Telegram
-    </div>
-    """,
+    "<div style='text-align: center'>Сделано с ❤️ для удобного скачивания фото из Telegram</div>",
     unsafe_allow_html=True
 )
